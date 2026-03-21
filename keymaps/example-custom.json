@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "id": "vscode",
+    "name": "VS Code",
+    "subtitle": "editor shortcuts",
+    "icon": "⬡",
+    "color": "#007acc",
+    "version": "1.0.0",
+    "description": "Core VS Code keyboard shortcuts for navigation, editing, and the command palette"
+  },
+  "shortcuts": [
+    { "id": "vsc-palette",  "type": "chord",    "keys": ["ctrl+shift+p"], "description": "Open command palette",           "category": "General",    "difficulty": 1 },
+    { "id": "vsc-save",     "type": "chord",    "keys": ["ctrl+s"],       "description": "Save current file",              "category": "File",       "difficulty": 1 },
+    { "id": "vsc-save-all", "type": "chord",    "keys": ["ctrl+shift+s"], "description": "Save all files",                 "category": "File",       "difficulty": 2 },
+    { "id": "vsc-find",     "type": "chord",    "keys": ["ctrl+f"],       "description": "Find in current file",           "category": "Search",     "difficulty": 1 },
+    { "id": "vsc-find-all", "type": "chord",    "keys": ["ctrl+shift+f"], "description": "Find across all files",          "category": "Search",     "difficulty": 2 },
+    { "id": "vsc-go-def",   "type": "key",      "keys": ["F12"],          "description": "Go to definition",               "category": "Navigation", "difficulty": 2 },
+    { "id": "vsc-quick",    "type": "chord",    "keys": ["ctrl+p"],       "description": "Quick open file by name",        "category": "Navigation", "difficulty": 1 },
+    { "id": "vsc-split",    "type": "chord",    "keys": ["ctrl+\\"],      "description": "Split editor",                   "category": "Layout",     "difficulty": 2 },
+    { "id": "vsc-close",    "type": "chord",    "keys": ["ctrl+w"],       "description": "Close current editor tab",       "category": "Tabs",       "difficulty": 1 },
+    { "id": "vsc-sidebar",  "type": "chord",    "keys": ["ctrl+b"],       "description": "Toggle sidebar visibility",      "category": "Layout",     "difficulty": 2 },
+    { "id": "vsc-terminal", "type": "chord",    "keys": ["ctrl+`"],       "description": "Toggle integrated terminal",     "category": "Layout",     "difficulty": 2 },
+    { "id": "vsc-comment",  "type": "chord",    "keys": ["ctrl+/"],       "description": "Toggle line comment",            "category": "Editing",    "difficulty": 1 },
+    { "id": "vsc-dup-line", "type": "chord",    "keys": ["alt+shift+down"], "description": "Duplicate line downward",     "category": "Editing",    "difficulty": 2 },
+    { "id": "vsc-mv-line",  "type": "chord",    "keys": ["alt+down"],     "description": "Move line down",                 "category": "Editing",    "difficulty": 2 },
+    { "id": "vsc-format",   "type": "chord",    "keys": ["alt+shift+f"],  "description": "Format entire document",         "category": "Editing",    "difficulty": 2 },
+    { "id": "vsc-rename",   "type": "key",      "keys": ["F2"],           "description": "Rename symbol",                  "category": "Refactor",   "difficulty": 2 },
+    { "id": "vsc-multi",    "type": "chord",    "keys": ["ctrl+d"],       "description": "Add selection to next find match", "category": "Editing",  "difficulty": 2 },
+    { "id": "vsc-zen",      "type": "chord",    "keys": ["ctrl+k z"],     "description": "Toggle zen / distraction-free mode", "category": "Layout", "difficulty": 3 }
+  ]
+}

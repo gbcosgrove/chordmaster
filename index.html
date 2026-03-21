@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CHORDMASTER — Keyboard Shortcut Trainer</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg:         #0a0a0a;
+      --surface:    #0f0f0f;
+      --border:     rgba(57, 255, 20, 0.12);
+      --border-dim: rgba(57, 255, 20, 0.06);
+      --green:      #39ff14;
+      --green-mid:  #1db30d;
+      --green-dim:  rgba(57, 255, 20, 0.10);
+      --green-glow: 0 0 18px rgba(57, 255, 20, 0.35);
+      --amber:      #ff9500;
+      --amber-dim:  rgba(255, 149, 0, 0.15);
+      --cyan:       #00d4ff;
+      --cyan-dim:   rgba(0, 212, 255, 0.12);
+      --red:        #ff2d55;
+      --red-dim:    rgba(255, 45, 85, 0.12);
+      --white:      #c0c0c0;
+      --muted:      #3a3a3a;
+      --mono:       'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--green);
+      font-family: var(--mono);
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* CRT scanlines */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0,0,0,0.025) 0px, rgba(0,0,0,0.025) 1px,
+        transparent 1px, transparent 3px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* CRT vignette */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.5) 100%);
+      pointer-events: none;
+      z-index: 9998;
+    }
+
+    /* ── SCREENS ── */
+    .screen { display: none; height: 100vh; flex-direction: column; }
+    .screen.active { display: flex; }
+
+    /* ══════════════════════
+       HOME
+    ══════════════════════ */
+    #home {
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      padding: 2rem;
+    }
+
+    .logo-mark  { font-size: 0.6rem; letter-spacing: 0.5em; color: var(--muted); margin-bottom: 0.5rem; }
+    .logo-title { font-size: 2.8rem; font-weight: 800; letter-spacing: -0.02em; color: var(--green); text-shadow: var(--green-glow); line-height: 1; margin-bottom: 0.4rem; }
+    .logo-sub   { font-size: 0.6rem; letter-spacing: 0.25em; color: var(--muted); margin-bottom: 2.5rem; text-transform: uppercase; }
+
+    .home-stats { display: flex; gap: 2.5rem; margin-bottom: 2rem; }
+
+    .stat-block { text-align: center; }
+    .stat-val   { display: block; font-size: 1.4rem; font-weight: 700; color: var(--green); line-height: 1; }
+    .stat-lbl   { display: block; font-size: 0.5rem; letter-spacing: 0.15em; color: var(--muted); text-transform: uppercase; margin-top: 0.25rem; }
+
+    .section-heading { font-size: 0.5rem; letter-spacing: 0.2em; color: var(--muted); text-transform: uppercase; margin-bottom: 0.75rem; align-self: flex-start; max-width: 560px; width: 100%; }
+
+    .pack-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0.625rem; width: 100%; max-width: 560px; margin-bottom: 1.5rem; }
+
+    .pack-card {
+      border: 1px solid var(--border);
+      padding: 0.875rem 1rem;
+      cursor: pointer;
+      background: var(--surface);
+      position: relative;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .pack-card:hover    { border-color: rgba(57, 255, 20, 0.3); }
+    .pack-card.selected { border-color: var(--green); box-shadow: var(--green-glow), inset 0 0 0 1px rgba(57,255,20,0.06); background: var(--green-dim); }
+
+    .pack-count { position: absolute; top: 0.5rem; right: 0.6rem; font-size: 0.5rem; color: var(--muted); }
+    .pack-icon  { font-size: 1rem; margin-bottom: 0.35rem; display: block; }
+    .pack-name  { font-size: 0.75rem; font-weight: 700; display: block; color: var(--green); }
+    .pack-sub   { font-size: 0.55rem; color: var(--muted); display: block; margin-top: 0.1rem; }
+
+    .home-actions { display: flex; gap: 0.625rem; width: 100%; max-width: 560px; margin-bottom: 0.875rem; }
+
+    .btn {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      padding: 0.65rem 1.25rem;
+      border: 1px solid var(--green);
+      background: transparent;
+      color: var(--green);
+      cursor: pointer;
+      transition: all 0.15s;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .btn:hover { background: var(--green-dim); box-shadow: var(--green-glow); }
+
+    .btn-primary { background: var(--green); color: var(--bg); flex: 1; }
+    .btn-primary:hover { background: #4fff2a; color: var(--bg); }
+
+    .btn-ghost { border-color: var(--muted); color: var(--muted); font-size: 0.6rem; }
+    .btn-ghost:hover { border-color: var(--cyan); color: var(--cyan); background: var(--cyan-dim); box-shadow: none; }
+
+    .home-footer { font-size: 0.55rem; color: var(--muted); display: flex; gap: 1rem; align-items: center; }
+    .home-footer a { color: var(--cyan); text-decoration: none; }
+    .home-footer a:hover { text-shadow: 0 0 8px var(--cyan); }
+
+    #file-input { display: none; }
+
+    /* ══════════════════════
+       SESSION
+    ══════════════════════ */
+    #session { padding: 0; }
+
+    .sess-header { display: flex; align-items: center; padding: 0.625rem 1.25rem; border-bottom: 1px solid var(--border); gap: 1rem; flex-shrink: 0; }
+
+    .streak-pill { font-size: 0.65rem; font-weight: 700; padding: 0.2rem 0.6rem; border: 1px solid var(--muted); color: var(--muted); transition: all 0.2s; white-space: nowrap; }
+    .streak-pill.hot { border-color: var(--amber); color: var(--amber); box-shadow: 0 0 12px rgba(255, 149, 0, 0.4); }
+
+    .progress-wrap { flex: 1; }
+    .progress-bar  { height: 2px; background: var(--border-dim); }
+    .progress-fill { height: 100%; background: var(--green); transition: width 0.4s ease; box-shadow: 0 0 6px var(--green); }
+    .progress-txt  { font-size: 0.5rem; color: var(--muted); margin-top: 0.2rem; text-align: right; letter-spacing: 0.05em; }
+
+    .mode-switch { display: flex; }
+    .mode-btn { font-family: var(--mono); font-size: 0.5rem; padding: 0.2rem 0.5rem; border: 1px solid var(--muted); background: none; color: var(--muted); cursor: pointer; letter-spacing: 0.08em; transition: all 0.15s; }
+    .mode-btn:first-child { border-right: none; }
+    .mode-btn.on { border-color: var(--cyan); color: var(--cyan); background: var(--cyan-dim); }
+
+    .sess-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem 2rem; gap: 1.25rem; }
+
+    .shortcut-ctx { font-size: 0.55rem; letter-spacing: 0.25em; color: var(--cyan); text-transform: uppercase; }
+
+    .prompt-card {
+      width: 100%;
+      max-width: 540px;
+      border: 1px solid var(--border);
+      padding: 2rem 2.5rem;
+      text-align: center;
+      background: var(--surface);
+      position: relative;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      animation: pulse-in 0.2s ease;
+    }
+
+    .prompt-card::before { content: attr(data-type); position: absolute; top: 0; right: 1rem; transform: translateY(-50%); background: var(--bg); padding: 0 0.4rem; font-size: 0.45rem; letter-spacing: 0.15em; color: var(--muted); }
+    .prompt-card.state-correct { border-color: var(--green); box-shadow: var(--green-glow); }
+    .prompt-card.state-wrong   { border-color: var(--red); box-shadow: 0 0 18px rgba(255, 45, 85, 0.3); animation: shake 0.3s ease; }
+
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%     { transform: translateX(-7px); }
+      40%     { transform: translateX(7px); }
+      60%     { transform: translateX(-4px); }
+      80%     { transform: translateX(4px); }
+    }
+
+    @keyframes pulse-in {
+      from { opacity: 0; transform: scale(0.97); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    .prompt-desc { font-size: 1rem; font-weight: 500; color: var(--white); line-height: 1.4; }
+    .prompt-diff { margin-top: 0.5rem; display: flex; justify-content: center; gap: 0.2rem; }
+    .diff-dot        { width: 4px; height: 4px; border-radius: 50%; background: var(--muted); }
+    .diff-dot.filled { background: var(--green-mid); }
+
+    .input-zone { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; min-height: 70px; }
+
+    .seq-row { display: flex; align-items: center; gap: 0.4rem; min-height: 32px; }
+
+    .key-chip { display: inline-flex; align-items: center; border: 1px solid var(--muted); padding: 0.15rem 0.5rem; font-size: 0.7rem; color: var(--muted); background: transparent; transition: all 0.15s; white-space: nowrap; }
+    .key-chip.step-done    { border-color: var(--green); color: var(--green); background: var(--green-dim); box-shadow: 0 0 8px rgba(57,255,20,0.2); }
+    .key-chip.step-pending { opacity: 0.4; }
+
+    .seq-arrow { font-size: 0.55rem; color: var(--muted); }
+
+    .typed-echo { font-size: 0.75rem; color: var(--muted); min-height: 1.2rem; transition: color 0.1s; letter-spacing: 0.05em; }
+    .typed-echo.good { color: var(--green); }
+    .typed-echo.bad  { color: var(--red); }
+
+    .hint-strip      { width: 100%; max-width: 540px; height: 2px; background: var(--border-dim); }
+    .hint-strip-fill { height: 100%; background: rgba(57,255,20,0.2); width: 100%; transition: width linear; }
+
+    .hint-zone { min-height: 2rem; display: flex; align-items: center; gap: 0.5rem; }
+
+    .hint-lbl      { font-size: 0.5rem; letter-spacing: 0.15em; color: var(--cyan); opacity: 0; transition: opacity 0.3s; }
+    .hint-lbl.show { opacity: 1; }
+
+    .hint-keys-row      { display: flex; align-items: center; gap: 0.4rem; opacity: 0; transition: opacity 0.3s; }
+    .hint-keys-row.show { opacity: 1; }
+
+    .key-chip-hint { display: inline-flex; align-items: center; border: 1px solid rgba(0,212,255,0.4); padding: 0.15rem 0.5rem; font-size: 0.7rem; color: var(--cyan); background: var(--cyan-dim); }
+
+    .toast { position: fixed; bottom: 3.5rem; left: 50%; transform: translateX(-50%) translateY(12px); opacity: 0; padding: 0.35rem 1rem; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.15em; pointer-events: none; transition: all 0.18s ease; white-space: nowrap; }
+    .toast.show    { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast.correct { color: var(--green); border: 1px solid var(--green); background: var(--surface); box-shadow: var(--green-glow); }
+    .toast.wrong   { color: var(--red);   border: 1px solid var(--red);   background: var(--surface); }
+    .toast.combo   { color: var(--amber); border: 1px solid var(--amber); background: var(--surface); box-shadow: 0 0 18px rgba(255,149,0,0.4); }
+
+    .sess-footer { display: flex; justify-content: center; gap: 0.25rem; padding: 0.5rem 1.25rem; border-top: 1px solid var(--border); flex-shrink: 0; }
+    .foot-btn { font-family: var(--mono); font-size: 0.55rem; color: var(--muted); background: none; border: none; cursor: pointer; padding: 0.25rem 0.75rem; letter-spacing: 0.08em; transition: color 0.15s; }
+    .foot-btn:hover { color: var(--white); }
+
+    /* ══════════════════════
+       SUMMARY
+    ══════════════════════ */
+    #summary { align-items: center; justify-content: flex-start; padding: 2.5rem 2rem; overflow-y: auto; }
+    #summary::-webkit-scrollbar { width: 4px; }
+    #summary::-webkit-scrollbar-track { background: var(--bg); }
+    #summary::-webkit-scrollbar-thumb { background: var(--muted); }
+
+    .sum-header { text-align: center; margin-bottom: 2rem; width: 100%; }
+    .sum-title  { font-size: 0.55rem; letter-spacing: 0.4em; color: var(--green); text-shadow: var(--green-glow); margin-bottom: 1.5rem; }
+    .sum-stats  { display: flex; gap: 2.5rem; justify-content: center; }
+
+    .results-table { width: 100%; max-width: 580px; margin-bottom: 1.5rem; border-top: 1px solid var(--border-dim); }
+    .result-row    { display: flex; align-items: center; padding: 0.45rem 0.25rem; border-bottom: 1px solid var(--border-dim); font-size: 0.6rem; gap: 0.75rem; }
+
+    .r-status { width: 1.2rem; text-align: center; }
+    .r-desc   { flex: 1; color: var(--white); font-size: 0.58rem; }
+    .r-keys   { color: var(--green); font-size: 0.55rem; white-space: nowrap; }
+    .r-time   { width: 44px; text-align: right; color: var(--muted); }
+    .r-score  { width: 24px; text-align: right; font-weight: 700; }
+
+    .score-5, .score-4 { color: var(--green); }
+    .score-3           { color: var(--green-mid); }
+    .score-2, .score-1 { color: var(--amber); }
+    .score-0           { color: var(--red); }
+    .r-pass { color: var(--green); }
+    .r-fail { color: var(--red); }
+
+    .sum-actions { display: flex; gap: 0.625rem; }
+
+    @keyframes blink {
+      0%,49% { opacity: 1; }
+      50%,100% { opacity: 0; }
+    }
+
+    .blink-cursor {
+      display: inline-block;
+      width: 0.55em;
+      height: 1em;
+      background: var(--green);
+      vertical-align: text-bottom;
+      animation: blink 1s step-end infinite;
+      margin-left: 1px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ HOME ══ -->
+<div id="home" class="screen active">
+  <span class="logo-mark">▸ CHORDMASTER v1.0</span>
+  <div class="logo-title">CHORDMASTER</div>
+  <div class="logo-sub">learn shortcuts by doing — not by reading</div>
+
+  <div class="home-stats" id="home-stats"></div>
+
+  <div class="section-heading">SELECT PACKS</div>
+  <div class="pack-grid" id="pack-grid"></div>
+
+  <div class="home-actions">
+    <button class="btn btn-ghost" id="btn-import">↑ IMPORT KEYMAP</button>
+    <button class="btn btn-primary" id="btn-start">START SESSION →</button>
+  </div>
+
+  <div class="home-footer">
+    <span>ESC×2 to quit session</span>
+    <span>·</span>
+    <a href="#" id="link-schema">download keymap schema</a>
+    <span>·</span>
+    <a href="https://github.com/yourusername/chordmaster" target="_blank" rel="noopener">github</a>
+  </div>
+
+  <input type="file" id="file-input" accept=".json">
+</div>
+
+<!-- ══ SESSION ══ -->
+<div id="session" class="screen">
+  <div class="sess-header">
+    <div class="streak-pill" id="streak-pill">STREAK 0</div>
+    <div class="progress-wrap">
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+      </div>
+      <div class="progress-txt" id="progress-txt">0 / 0</div>
+    </div>
+    <div class="mode-switch">
+      <button class="mode-btn on" id="mode-learn">LEARN</button>
+      <button class="mode-btn"    id="mode-challenge">CHALLENGE</button>
+    </div>
+  </div>
+
+  <div class="sess-body">
+    <div class="shortcut-ctx" id="shortcut-ctx">— / —</div>
+
+    <div class="prompt-card" id="prompt-card" data-type="CHORD">
+      <div class="prompt-desc" id="prompt-desc">Loading…</div>
+      <div class="prompt-diff" id="prompt-diff"></div>
+    </div>
+
+    <div class="input-zone">
+      <div class="seq-row"    id="seq-row"></div>
+      <div class="typed-echo" id="typed-echo"></div>
+    </div>
+
+    <div class="hint-strip">
+      <div class="hint-strip-fill" id="hint-strip-fill"></div>
+    </div>
+
+    <div class="hint-zone">
+      <span class="hint-lbl"     id="hint-lbl">HINT</span>
+      <div  class="hint-keys-row" id="hint-keys-row"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="sess-footer">
+    <button class="foot-btn" id="btn-hint">[ HINT ]</button>
+    <button class="foot-btn" id="btn-skip">[ SKIP ]</button>
+    <button class="foot-btn" id="btn-quit">[ QUIT ]</button>
+  </div>
+</div>
+
+<!-- ══ SUMMARY ══ -->
+<div id="summary" class="screen">
+  <div class="sum-header">
+    <div class="sum-title">▸ SESSION COMPLETE</div>
+    <div class="sum-stats" id="sum-stats"></div>
+  </div>
+  <div class="results-table" id="results-table"></div>
+  <div class="sum-actions">
+    <button class="btn btn-ghost"   id="btn-go-home">← HOME</button>
+    <button class="btn btn-primary" id="btn-new-sess">NEW SESSION →</button>
+  </div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════
+   SECURITY UTILS
+   All dynamic content must pass through esc() before being
+   inserted into innerHTML to prevent XSS via crafted keymaps.
+════════════════════════════════════════════════════════════ */
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/* ════════════════════════════════════════════════════════════
+   KEYMAP DATA
+════════════════════════════════════════════════════════════ */
+
+const BUILTIN_KEYMAPS = {
+  terminal: {
+    meta: { id: 'terminal', name: 'Terminal', subtitle: 'bash / zsh', icon: '$_', color: '#39ff14' },
+    shortcuts: [
+      { id: 't-bol',       type: 'chord',    keys: ['ctrl+a'],  description: 'Move to beginning of line',               category: 'Navigation', difficulty: 1 },
+      { id: 't-eol',       type: 'chord',    keys: ['ctrl+e'],  description: 'Move to end of line',                     category: 'Navigation', difficulty: 1 },
+      { id: 't-fwd-word',  type: 'chord',    keys: ['alt+f'],   description: 'Move forward one word',                   category: 'Navigation', difficulty: 2 },
+      { id: 't-bwd-word',  type: 'chord',    keys: ['alt+b'],   description: 'Move backward one word',                  category: 'Navigation', difficulty: 2 },
+      { id: 't-del-word',  type: 'chord',    keys: ['ctrl+w'],  description: 'Delete word before cursor',               category: 'Editing',    difficulty: 2 },
+      { id: 't-del-wdf',   type: 'chord',    keys: ['alt+d'],   description: 'Delete word after cursor',                category: 'Editing',    difficulty: 2 },
+      { id: 't-cut-eol',   type: 'chord',    keys: ['ctrl+k'],  description: 'Cut from cursor to end of line',          category: 'Editing',    difficulty: 2 },
+      { id: 't-cut-bol',   type: 'chord',    keys: ['ctrl+u'],  description: 'Cut from cursor to start of line',        category: 'Editing',    difficulty: 2 },
+      { id: 't-paste',     type: 'chord',    keys: ['ctrl+y'],  description: 'Paste (yank) last cut text',              category: 'Editing',    difficulty: 2 },
+      { id: 't-transpose', type: 'chord',    keys: ['ctrl+t'],  description: 'Transpose characters',                    category: 'Editing',    difficulty: 3 },
+      { id: 't-interrupt', type: 'chord',    keys: ['ctrl+c'],  description: 'Interrupt / cancel current process',      category: 'Process',    difficulty: 1 },
+      { id: 't-suspend',   type: 'chord',    keys: ['ctrl+z'],  description: 'Suspend process to background',          category: 'Process',    difficulty: 2 },
+      { id: 't-clear',     type: 'chord',    keys: ['ctrl+l'],  description: 'Clear the terminal screen',               category: 'Process',    difficulty: 1 },
+      { id: 't-hist-rev',  type: 'chord',    keys: ['ctrl+r'],  description: 'Reverse-search command history',          category: 'History',    difficulty: 2 },
+      { id: 't-hist-prev', type: 'chord',    keys: ['ctrl+p'],  description: 'Previous command in history',             category: 'History',    difficulty: 2 },
+      { id: 't-hist-next', type: 'chord',    keys: ['ctrl+n'],  description: 'Next command in history',                 category: 'History',    difficulty: 2 },
+      { id: 't-last-arg',  type: 'chord',    keys: ['alt+.'],   description: 'Insert last argument of previous command', category: 'History',  difficulty: 3 },
+    ]
+  },
+  tmux: {
+    meta: { id: 'tmux', name: 'tmux', subtitle: 'multiplexer', icon: '⊞', color: '#00d4ff' },
+    shortcuts: [
+      { id: 'mx-new-win',     type: 'sequence', keys: ['ctrl+b', 'c'],  description: 'Create new window',            category: 'Windows',  difficulty: 1 },
+      { id: 'mx-list-win',    type: 'sequence', keys: ['ctrl+b', 'w'],  description: 'List all windows',             category: 'Windows',  difficulty: 1 },
+      { id: 'mx-next-win',    type: 'sequence', keys: ['ctrl+b', 'n'],  description: 'Go to next window',            category: 'Windows',  difficulty: 1 },
+      { id: 'mx-prev-win',    type: 'sequence', keys: ['ctrl+b', 'p'],  description: 'Go to previous window',        category: 'Windows',  difficulty: 1 },
+      { id: 'mx-rename-win',  type: 'sequence', keys: ['ctrl+b', ','],  description: 'Rename current window',        category: 'Windows',  difficulty: 2 },
+      { id: 'mx-kill-win',    type: 'sequence', keys: ['ctrl+b', '&'],  description: 'Kill current window',          category: 'Windows',  difficulty: 2 },
+      { id: 'mx-split-v',     type: 'sequence', keys: ['ctrl+b', '%'],  description: 'Split pane vertically',        category: 'Panes',    difficulty: 1 },
+      { id: 'mx-split-h',     type: 'sequence', keys: ['ctrl+b', '"'],  description: 'Split pane horizontally',      category: 'Panes',    difficulty: 1 },
+      { id: 'mx-next-pane',   type: 'sequence', keys: ['ctrl+b', 'o'],  description: 'Switch to next pane',          category: 'Panes',    difficulty: 1 },
+      { id: 'mx-show-panes',  type: 'sequence', keys: ['ctrl+b', 'q'],  description: 'Show pane numbers briefly',    category: 'Panes',    difficulty: 2 },
+      { id: 'mx-zoom',        type: 'sequence', keys: ['ctrl+b', 'z'],  description: 'Toggle pane zoom',             category: 'Panes',    difficulty: 2 },
+      { id: 'mx-kill-pane',   type: 'sequence', keys: ['ctrl+b', 'x'],  description: 'Kill current pane',            category: 'Panes',    difficulty: 2 },
+      { id: 'mx-detach',      type: 'sequence', keys: ['ctrl+b', 'd'],  description: 'Detach from current session',  category: 'Sessions', difficulty: 1 },
+      { id: 'mx-list-sess',   type: 'sequence', keys: ['ctrl+b', 's'],  description: 'List all sessions',            category: 'Sessions', difficulty: 2 },
+      { id: 'mx-rename-sess', type: 'sequence', keys: ['ctrl+b', '$'],  description: 'Rename current session',       category: 'Sessions', difficulty: 2 },
+      { id: 'mx-copy-mode',   type: 'sequence', keys: ['ctrl+b', '['],  description: 'Enter copy / scroll mode',     category: 'Misc',     difficulty: 2 },
+      { id: 'mx-paste',       type: 'sequence', keys: ['ctrl+b', ']'],  description: 'Paste from tmux buffer',       category: 'Misc',     difficulty: 2 },
+      { id: 'mx-help',        type: 'sequence', keys: ['ctrl+b', '?'],  description: 'Show all key bindings',        category: 'Misc',     difficulty: 1 },
+    ]
+  },
+  vim: {
+    meta: { id: 'vim', name: 'Vim', subtitle: 'text editor', icon: 'V:', color: '#ff9500' },
+    shortcuts: [
+      { id: 'v-insert',     type: 'key',      keys: ['i'],        description: 'Enter Insert mode (before cursor)',  category: 'Modes',      difficulty: 1 },
+      { id: 'v-append',     type: 'key',      keys: ['a'],        description: 'Append: Insert after cursor',        category: 'Modes',      difficulty: 1 },
+      { id: 'v-append-eol', type: 'key',      keys: ['A'],        description: 'Insert at end of line',             category: 'Modes',      difficulty: 2 },
+      { id: 'v-open-below', type: 'key',      keys: ['o'],        description: 'Open new line below cursor',         category: 'Modes',      difficulty: 1 },
+      { id: 'v-open-above', type: 'key',      keys: ['O'],        description: 'Open new line above cursor',         category: 'Modes',      difficulty: 2 },
+      { id: 'v-normal',     type: 'key',      keys: ['escape'],   description: 'Return to Normal mode',              category: 'Modes',      difficulty: 1 },
+      { id: 'v-visual',     type: 'key',      keys: ['v'],        description: 'Enter Visual (character) mode',      category: 'Modes',      difficulty: 2 },
+      { id: 'v-vis-line',   type: 'key',      keys: ['V'],        description: 'Enter Visual Line mode',             category: 'Modes',      difficulty: 2 },
+      { id: 'v-word-fwd',   type: 'key',      keys: ['w'],        description: 'Move to start of next word',        category: 'Navigation', difficulty: 1 },
+      { id: 'v-word-bwd',   type: 'key',      keys: ['b'],        description: 'Move to start of previous word',    category: 'Navigation', difficulty: 1 },
+      { id: 'v-bol',        type: 'key',      keys: ['0'],        description: 'Move to beginning of line',         category: 'Navigation', difficulty: 1 },
+      { id: 'v-eol',        type: 'key',      keys: ['$'],        description: 'Move to end of line',               category: 'Navigation', difficulty: 2 },
+      { id: 'v-bof',        type: 'sequence', keys: ['g', 'g'],   description: 'Jump to beginning of file',         category: 'Navigation', difficulty: 2 },
+      { id: 'v-eof',        type: 'key',      keys: ['G'],        description: 'Jump to end of file',               category: 'Navigation', difficulty: 2 },
+      { id: 'v-del-line',   type: 'sequence', keys: ['d', 'd'],   description: 'Delete (cut) current line',         category: 'Editing',    difficulty: 1 },
+      { id: 'v-yank-line',  type: 'sequence', keys: ['y', 'y'],   description: 'Yank (copy) current line',          category: 'Editing',    difficulty: 1 },
+      { id: 'v-paste',      type: 'key',      keys: ['p'],        description: 'Paste after cursor',                category: 'Editing',    difficulty: 1 },
+      { id: 'v-paste-b',    type: 'key',      keys: ['P'],        description: 'Paste before cursor',               category: 'Editing',    difficulty: 2 },
+      { id: 'v-del-char',   type: 'key',      keys: ['x'],        description: 'Delete character under cursor',     category: 'Editing',    difficulty: 1 },
+      { id: 'v-undo',       type: 'key',      keys: ['u'],        description: 'Undo last change',                  category: 'Editing',    difficulty: 1 },
+      { id: 'v-redo',       type: 'chord',    keys: ['ctrl+r'],   description: 'Redo (Ctrl+R)',                     category: 'Editing',    difficulty: 2 },
+      { id: 'v-search-fwd', type: 'key',      keys: ['/'],        description: 'Search forward',                    category: 'Search',     difficulty: 1 },
+      { id: 'v-next-match', type: 'key',      keys: ['n'],        description: 'Jump to next search match',         category: 'Search',     difficulty: 1 },
+      { id: 'v-prev-match', type: 'key',      keys: ['N'],        description: 'Jump to previous search match',     category: 'Search',     difficulty: 2 },
+    ]
+  }
+};
+
+/* ════════════════════════════════════════════════════════════
+   STATE
+════════════════════════════════════════════════════════════ */
+
+const STATE = {
+  screen:        'home',
+  selectedPacks: ['terminal'],
+  mode:          'learn',
+  session:       null,
+  srs:           loadSRS(),
+  totalSessions: parseInt(localStorage.getItem('cm-sessions') || '0', 10),
+  customKeymaps: loadCustomKeymaps(),
+  escCount:      0,
+  escTimer:      null,
+};
+
+/* ════════════════════════════════════════════════════════════
+   PERSISTENCE
+════════════════════════════════════════════════════════════ */
+
+function loadSRS() {
+  try { return JSON.parse(localStorage.getItem('cm-srs') || '{}'); }
+  catch { return {}; }
+}
+
+function saveSRS() {
+  localStorage.setItem('cm-srs', JSON.stringify(STATE.srs));
+}
+
+function loadCustomKeymaps() {
+  try { return JSON.parse(localStorage.getItem('cm-custom') || '[]'); }
+  catch { return []; }
+}
+
+function saveCustomKeymaps() {
+  localStorage.setItem('cm-custom', JSON.stringify(STATE.customKeymaps));
+}
+
+/* ════════════════════════════════════════════════════════════
+   SRS — Simplified SM-2
+   Score 1–5: based on response time relative to difficulty target.
+   Slow but correct = score 1–2. Instant and correct = 5.
+   Hints or multiple attempts cap score at 1.
+════════════════════════════════════════════════════════════ */
+
+function getSRS(id) {
+  return STATE.srs[id] || { interval: 1, easeFactor: 2.5, nextDue: 0, reps: 0 };
+}
+
+function updateSRS(id, score) {
+  const e = getSRS(id);
+  let { interval, easeFactor, reps } = e;
+
+  if (score < 3) {
+    interval   = 1;
+    easeFactor = Math.max(1.3, easeFactor - 0.2);
+    reps       = 0;
+  } else {
+    const ef = Math.max(1.3, easeFactor + 0.1 - (5 - score) * (0.08 + (5 - score) * 0.02));
+    interval   = reps === 0 ? 1 : reps === 1 ? 6 : Math.round(interval * ef);
+    easeFactor = ef;
+    reps++;
+  }
+
+  const DAY = 24 * 60 * 60 * 1000;
+  STATE.srs[id] = { interval, easeFactor, reps, nextDue: Date.now() + interval * DAY, lastScore: score };
+  saveSRS();
+}
+
+function calcScore(ms, difficulty, usedHint, attempts) {
+  if (usedHint || attempts > 2) return 1;
+  const target = difficulty === 1 ? 1500 : difficulty === 2 ? 2200 : 3000;
+  const r = ms / target;
+  if (r < 0.4) return 5;
+  if (r < 0.7) return 4;
+  if (r < 1.1) return 3;
+  if (r < 1.8) return 2;
+  return 1;
+}
+
+/* ════════════════════════════════════════════════════════════
+   SESSION
+════════════════════════════════════════════════════════════ */
+
+function getAllShortcuts() {
+  const packs = [
+    ...STATE.selectedPacks.map(id => BUILTIN_KEYMAPS[id]).filter(Boolean),
+    ...STATE.customKeymaps.filter(k => STATE.selectedPacks.includes(k.meta.id)),
+  ];
+  return packs.flatMap(p =>
+    p.shortcuts.map(s => ({ ...s, packId: p.meta.id, packName: p.meta.name }))
+  );
+}
+
+function buildQueue() {
+  const now = Date.now();
+  const all = getAllShortcuts();
+
+  // Sort: most overdue first, then by upcoming due date
+  all.sort((a, b) => {
+    const aDue = getSRS(a.id).nextDue - now;
+    const bDue = getSRS(b.id).nextDue - now;
+    if (aDue < 0 && bDue < 0) return aDue - bDue;
+    if (aDue < 0) return -1;
+    if (bDue < 0) return 1;
+    return aDue - bDue;
+  });
+
+  return all.slice(0, 20);
+}
+
+function startSession() {
+  if (STATE.selectedPacks.length === 0) {
+    STATE.selectedPacks = ['terminal'];
+    renderHome();
+  }
+
+  const queue = buildQueue();
+  if (queue.length === 0) return;
+
+  STATE.session = {
+    queue,
+    idx:       0,
+    results:   [],
+    streak:    0,
+    maxStreak: 0,
+    startTime: Date.now(),
+    // per-shortcut state:
+    startMs:    null,
+    attempts:   0,
+    usedHint:   false,
+    seqStep:    0,
+    hintTimer:  null,
+    hintIval:   null,
+    seqTimeout: null,
+  };
+
+  switchScreen('session');
+  loadShortcut();
+  document.addEventListener('keydown', onKey, true);
+}
+
+function loadShortcut() {
+  const s = STATE.session;
+  if (s.idx >= s.queue.length) { endSession(); return; }
+
+  s.startMs   = Date.now();
+  s.attempts  = 0;
+  s.usedHint  = false;
+  s.seqStep   = 0;
+  clearSeqTimeout();
+
+  renderShortcut(s.queue[s.idx]);
+  startHintTimer(s.queue[s.idx]);
+}
+
+function nextShortcut() {
+  STATE.session.idx++;
+  const pct = (STATE.session.idx / STATE.session.queue.length) * 100;
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-txt').textContent  =
+    `${STATE.session.idx} / ${STATE.session.queue.length}`;
+  loadShortcut();
+}
+
+function skipShortcut() {
+  const s  = STATE.session;
+  const sc = s.queue[s.idx];
+  clearHintTimer();
+  clearSeqTimeout();
+  s.results.push({ sc, time: null, score: 0, skipped: true });
+  updateSRS(sc.id, 0);
+  s.streak = 0;
+  updateStreak();
+  nextShortcut();
+}
+
+/* ════════════════════════════════════════════════════════════
+   KEY CAPTURE
+
+   Uses e.code for modifier combos to avoid Mac Option-key
+   character substitution (alt+f → "ƒ" in e.key).
+   Uses e.key for plain keys to preserve case and special chars.
+════════════════════════════════════════════════════════════ */
+
+function normalizeKey(e) {
+  if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return null;
+
+  const parts = [];
+  if (e.ctrlKey) parts.push('ctrl');
+  if (e.altKey)  parts.push('alt');
+
+  let key;
+  if (e.ctrlKey || e.altKey) {
+    const c = e.code;
+    key = c.startsWith('Key')   ? c.slice(3).toLowerCase()
+        : c.startsWith('Digit') ? c.slice(5)
+        : c === 'Period'        ? '.'
+        : c === 'Comma'         ? ','
+        : c === 'Slash'         ? '/'
+        : c === 'Semicolon'     ? ';'
+        : c === 'Quote'         ? "'"
+        : c === 'BracketLeft'   ? '['
+        : c === 'BracketRight'  ? ']'
+        : c === 'Backslash'     ? '\\'
+        : c === 'Minus'         ? '-'
+        : c === 'Equal'         ? '='
+        : e.key.toLowerCase();
+  } else {
+    const k = e.key;
+    key = k === ' '         ? 'space'
+        : k === 'Escape'    ? 'escape'
+        : k === 'Enter'     ? 'enter'
+        : k === 'Tab'       ? 'tab'
+        : k === 'Backspace' ? 'backspace'
+        : k === 'Delete'    ? 'delete'
+        : k === 'ArrowUp'   ? 'up'
+        : k === 'ArrowDown' ? 'down'
+        : k === 'ArrowLeft' ? 'left'
+        : k === 'ArrowRight'? 'right'
+        : k;
+  }
+
+  parts.push(key);
+  return parts.join('+');
+}
+
+function onKey(e) {
+  if (STATE.screen !== 'session') return;
+
+  // ESC ×2 = quit session
+  if (e.key === 'Escape') {
+    STATE.escCount++;
+    clearTimeout(STATE.escTimer);
+    STATE.escTimer = setTimeout(() => { STATE.escCount = 0; }, 600);
+    if (STATE.escCount >= 2) { STATE.escCount = 0; endSession(); return; }
+  }
+
+  // Pass through browser/OS shortcuts
+  if (e.metaKey) return;
+  if (e.key.startsWith('F') && e.key.length > 1) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const norm = normalizeKey(e);
+  if (!norm) return;
+
+  const s  = STATE.session;
+  if (!s)   return;
+  const sc = s.queue[s.idx];
+  if (!sc)  return;
+
+  const expected = sc.keys;
+
+  if (sc.type === 'chord') {
+    const ms = Date.now() - s.startMs;
+    if (norm === expected[0]) { onCorrect(ms); } else { onWrong(norm); }
+    return;
+  }
+
+  // sequence / key
+  const expectedStep = expected[s.seqStep];
+  const ms = Date.now() - s.startMs;
+
+  if (norm === expectedStep) {
+    clearSeqTimeout();
+    s.seqStep++;
+
+    if (s.seqStep >= expected.length) {
+      onCorrect(ms);
+      s.seqStep = 0;
+    } else {
+      // Show partial progress; reset if user waits too long
+      renderSeqProgress(sc, s.seqStep);
+      s.seqTimeout = setTimeout(() => {
+        s.seqStep = 0;
+        renderSeqProgress(sc, 0);
+      }, 2000);
+    }
+  } else {
+    if (s.seqStep > 0) {
+      clearSeqTimeout();
+      s.seqStep = 0;
+      renderSeqProgress(sc, 0);
+    }
+    onWrong(norm);
+  }
+}
+
+function onCorrect(ms) {
+  const s  = STATE.session;
+  const sc = s.queue[s.idx];
+  clearHintTimer();
+  clearSeqTimeout();
+
+  const score = calcScore(ms, sc.difficulty, s.usedHint, s.attempts);
+  s.results.push({ sc, time: ms, score, attempts: s.attempts });
+  updateSRS(sc.id, score);
+
+  s.streak++;
+  s.maxStreak = Math.max(s.maxStreak, s.streak);
+  updateStreak();
+
+  document.getElementById('prompt-card').classList.add('state-correct');
+
+  const msg  = s.streak >= 5 ? `✓ ${s.streak}× COMBO!`
+             : s.streak >= 3 ? `✓ STREAK ${s.streak}×`
+             : score === 5   ? '✓ PERFECT'
+             : score >= 3    ? '✓ GOOD'
+             :                 '✓ OK';
+
+  showToast(s.streak >= 3 ? 'combo' : 'correct', msg);
+  playTone(true);
+
+  setTimeout(() => {
+    document.getElementById('prompt-card').classList.remove('state-correct');
+    hideToast();
+    nextShortcut();
+  }, 480);
+}
+
+function onWrong(pressedKey) {
+  const s = STATE.session;
+  s.attempts++;
+
+  if (STATE.mode === 'learn') { s.usedHint = true; showHint(); }
+
+  document.getElementById('prompt-card').classList.add('state-wrong');
+
+  const echo = document.getElementById('typed-echo');
+  echo.textContent = pressedKey;
+  echo.className   = 'typed-echo bad';
+
+  showToast('wrong', `✗  ${pressedKey}`);
+  playTone(false);
+
+  setTimeout(() => {
+    document.getElementById('prompt-card').classList.remove('state-wrong');
+    hideToast();
+    echo.textContent = '';
+    echo.className   = 'typed-echo';
+  }, 550);
+}
+
+/* ════════════════════════════════════════════════════════════
+   HINT SYSTEM
+════════════════════════════════════════════════════════════ */
+
+const HINT_DELAY_MS = 4000;
+
+function startHintTimer(sc) {
+  clearHintTimer();
+  if (STATE.mode === 'challenge') return;
+
+  const fill = document.getElementById('hint-strip-fill');
+  fill.style.transition = 'none';
+  fill.style.width      = '100%';
+
+  const start = Date.now();
+  STATE.session.hintIval = setInterval(() => {
+    const pct = Math.max(0, 100 - ((Date.now() - start) / HINT_DELAY_MS) * 100);
+    fill.style.width = pct + '%';
+  }, 50);
+
+  STATE.session.hintTimer = setTimeout(showHint, HINT_DELAY_MS);
+}
+
+function clearHintTimer() {
+  if (!STATE.session) return;
+  clearTimeout(STATE.session.hintTimer);
+  clearInterval(STATE.session.hintIval);
+  const fill = document.getElementById('hint-strip-fill');
+  if (fill) fill.style.width = '0%';
+}
+
+function clearSeqTimeout() {
+  if (STATE.session) clearTimeout(STATE.session.seqTimeout);
+}
+
+function showHint() {
+  if (!STATE.session) return;
+  const sc = STATE.session.queue[STATE.session.idx];
+  STATE.session.usedHint = true;
+
+  const row = document.getElementById('hint-keys-row');
+  // Build hint using safe DOM methods — no innerHTML with untrusted data
+  row.textContent = '';
+
+  sc.keys.forEach((k, i) => {
+    if (i > 0) {
+      const sep = document.createElement('span');
+      sep.style.cssText = 'font-size:0.5rem;color:var(--muted);padding:0 0.1rem;';
+      sep.textContent = sc.type === 'sequence' ? '→' : '+';
+      row.appendChild(sep);
+    }
+    const chip = document.createElement('span');
+    chip.className   = 'key-chip-hint';
+    chip.textContent = fmtKey(k);
+    row.appendChild(chip);
+  });
+
+  document.getElementById('hint-lbl').classList.add('show');
+  row.classList.add('show');
+}
+
+function hideHint() {
+  document.getElementById('hint-lbl').classList.remove('show');
+  const row = document.getElementById('hint-keys-row');
+  row.classList.remove('show');
+  row.textContent = '';
+}
+
+/* ════════════════════════════════════════════════════════════
+   AUDIO — Web Audio API
+════════════════════════════════════════════════════════════ */
+
+let _actx = null;
+
+function playTone(success) {
+  try {
+    if (!_actx) _actx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx  = _actx;
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    if (success) {
+      osc.frequency.setValueAtTime(660, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1100, ctx.currentTime + 0.08);
+    } else {
+      osc.frequency.setValueAtTime(280, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(160, ctx.currentTime + 0.12);
+    }
+
+    osc.type = 'square';
+    gain.gain.setValueAtTime(0.06, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.15);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.15);
+  } catch (_) { /* audio is non-critical */ }
+}
+
+/* ════════════════════════════════════════════════════════════
+   RENDERING
+════════════════════════════════════════════════════════════ */
+
+function renderHome() {
+  const now  = Date.now();
+  const DAY  = 86400000;
+  const all  = Object.values(BUILTIN_KEYMAPS).flatMap(p => p.shortcuts);
+  const due  = all.filter(s => getSRS(s.id).nextDue <= now + DAY).length;
+  const mastered = Object.values(STATE.srs).filter(e => e.interval > 21).length;
+
+  // Stats — only numbers/computed values here, no user data
+  document.getElementById('home-stats').innerHTML =
+    `<div class="stat-block"><span class="stat-val">${STATE.totalSessions}</span><span class="stat-lbl">Sessions</span></div>` +
+    `<div class="stat-block"><span class="stat-val">${Object.keys(STATE.srs).length}</span><span class="stat-lbl">Practiced</span></div>` +
+    `<div class="stat-block"><span class="stat-val">${mastered}</span><span class="stat-lbl">Mastered</span></div>` +
+    `<div class="stat-block"><span class="stat-val" style="color:${due > 0 ? 'var(--amber)' : 'var(--green)'}">${due}</span><span class="stat-lbl">Due Today</span></div>`;
+
+  // Pack grid — built with DOM APIs to avoid XSS via custom keymap data
+  const grid = document.getElementById('pack-grid');
+  grid.textContent = '';
+
+  const allPacks = [...Object.values(BUILTIN_KEYMAPS), ...STATE.customKeymaps];
+  allPacks.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'pack-card' + (STATE.selectedPacks.includes(p.meta.id) ? ' selected' : '');
+    card.dataset.packId = p.meta.id;
+
+    const count = document.createElement('span');
+    count.className = 'pack-count';
+    count.textContent = p.shortcuts.length;
+
+    const icon = document.createElement('span');
+    icon.className = 'pack-icon';
+    icon.style.color = p.meta.color || 'var(--green)';
+    icon.textContent = p.meta.icon || '▸';
+
+    const name = document.createElement('span');
+    name.className = 'pack-name';
+    name.style.color = p.meta.color || 'var(--green)';
+    name.textContent = p.meta.name;
+
+    const sub = document.createElement('span');
+    sub.className = 'pack-sub';
+    sub.textContent = p.meta.subtitle || '';
+
+    card.append(count, icon, name, sub);
+    grid.appendChild(card);
+  });
+}
+
+function renderShortcut(sc) {
+  document.getElementById('shortcut-ctx').textContent =
+    `${sc.packName || sc.packId}  ›  ${sc.category}`;
+
+  document.getElementById('prompt-desc').textContent = sc.description;
+
+  const card = document.getElementById('prompt-card');
+  card.dataset.type = sc.type === 'sequence' ? 'SEQUENCE' : sc.type === 'chord' ? 'CHORD' : 'KEY';
+  card.className = 'prompt-card';
+
+  // Difficulty dots — safe, just numbers
+  document.getElementById('prompt-diff').innerHTML =
+    [1,2,3].map(d => `<span class="diff-dot${d <= sc.difficulty ? ' filled' : ''}"></span>`).join('');
+
+  renderSeqProgress(sc, 0);
+  hideHint();
+
+  const echo = document.getElementById('typed-echo');
+  echo.textContent = '';
+  echo.className   = 'typed-echo';
+}
+
+function renderSeqProgress(sc, step) {
+  const row = document.getElementById('seq-row');
+  row.textContent = '';
+
+  if (sc.type === 'chord') {
+    const chip = document.createElement('span');
+    chip.className = 'key-chip step-pending';
+    chip.style.cssText = 'padding:0.25rem 2rem;';
+    const cur = document.createElement('span');
+    cur.className = 'blink-cursor';
+    chip.appendChild(cur);
+    row.appendChild(chip);
+    return;
+  }
+
+  sc.keys.forEach((k, i) => {
+    if (i > 0) {
+      const arr = document.createElement('span');
+      arr.className   = 'seq-arrow';
+      arr.textContent = ' → ';
+      row.appendChild(arr);
+    }
+    const chip = document.createElement('span');
+    chip.className   = `key-chip ${i < step ? 'step-done' : 'step-pending'}`;
+    chip.textContent = i < step ? fmtKey(k) : '?';
+    row.appendChild(chip);
+  });
+}
+
+function updateStreak() {
+  const s    = STATE.session;
+  const pill = document.getElementById('streak-pill');
+  pill.textContent = `STREAK ${s.streak}×`;
+  pill.className   = `streak-pill ${s.streak >= 3 ? 'hot' : ''}`;
+}
+
+function showToast(type, text) {
+  const el = document.getElementById('toast');
+  el.textContent = text;
+  el.className   = `toast ${type} show`;
+}
+
+function hideToast() {
+  document.getElementById('toast').className = 'toast';
+}
+
+function renderSummary() {
+  const s       = STATE.session;
+  const elapsed = Math.round((Date.now() - s.startTime) / 1000);
+  const done    = s.results.filter(r => !r.skipped);
+  const correct = done.filter(r => r.score >= 3);
+  const accuracy = done.length ? Math.round(correct.length / done.length * 100) : 0;
+  const avgMs    = done.length ? done.reduce((a, r) => a + (r.time || 0), 0) / done.length : 0;
+
+  // Stats — numbers only, safe for innerHTML
+  document.getElementById('sum-stats').innerHTML =
+    `<div class="stat-block"><span class="stat-val">${accuracy}%</span><span class="stat-lbl">Accuracy</span></div>` +
+    `<div class="stat-block"><span class="stat-val">${(avgMs / 1000).toFixed(1)}s</span><span class="stat-lbl">Avg Time</span></div>` +
+    `<div class="stat-block"><span class="stat-val" style="color:var(--amber)">${s.maxStreak}×</span><span class="stat-lbl">Best Streak</span></div>` +
+    `<div class="stat-block"><span class="stat-val">${Math.floor(elapsed/60)}:${String(elapsed%60).padStart(2,'0')}</span><span class="stat-lbl">Duration</span></div>`;
+
+  // Results list — build with DOM APIs, user-controlled data (keymap descriptions) via textContent
+  const table = document.getElementById('results-table');
+  table.textContent = '';
+
+  s.results.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'result-row';
+
+    const status = document.createElement('span');
+    status.className = 'r-status ' + (r.skipped ? '' : r.score >= 3 ? 'r-pass' : 'r-fail');
+    status.textContent = r.skipped ? '—' : r.score >= 4 ? '✓' : r.score >= 2 ? '◑' : '✗';
+
+    const desc = document.createElement('span');
+    desc.className   = 'r-desc';
+    desc.textContent = r.sc.description;
+
+    const keys = document.createElement('span');
+    keys.className   = 'r-keys';
+    keys.textContent = r.sc.keys.map(fmtKey).join(r.sc.type === 'sequence' ? ' → ' : '');
+
+    const time = document.createElement('span');
+    time.className   = 'r-time';
+    time.textContent = r.time ? `${(r.time / 1000).toFixed(1)}s` : '—';
+
+    const score = document.createElement('span');
+    score.className   = `r-score score-${r.skipped ? 0 : r.score}`;
+    score.textContent = r.skipped ? '' : String(r.score);
+
+    row.append(status, desc, keys, time, score);
+    table.appendChild(row);
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   KEY FORMAT
+════════════════════════════════════════════════════════════ */
+
+const KEY_SYMBOLS = {
+  ctrl: '⌃', alt: '⌥', shift: '⇧', meta: '⌘',
+  escape: 'ESC', enter: '↵', space: 'SPC', tab: 'TAB',
+  up: '↑', down: '↓', left: '←', right: '→',
+  backspace: '⌫', delete: '⌦',
+};
+
+function fmtKey(str) {
+  return str.split('+').map(k => KEY_SYMBOLS[k] || k.toUpperCase()).join('+');
+}
+
+/* ════════════════════════════════════════════════════════════
+   SCREEN + MODE
+════════════════════════════════════════════════════════════ */
+
+function setMode(mode) {
+  STATE.mode = mode;
+  document.getElementById('mode-learn').className     = `mode-btn ${mode === 'learn' ? 'on' : ''}`;
+  document.getElementById('mode-challenge').className = `mode-btn ${mode === 'challenge' ? 'on' : ''}`;
+}
+
+function togglePack(id) {
+  const i = STATE.selectedPacks.indexOf(id);
+  if (i === -1) {
+    STATE.selectedPacks.push(id);
+  } else if (STATE.selectedPacks.length > 1) {
+    STATE.selectedPacks.splice(i, 1);
+  }
+  renderHome();
+}
+
+function switchScreen(name) {
+  STATE.screen = name;
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(name).classList.add('active');
+}
+
+function endSession() {
+  clearHintTimer();
+  clearSeqTimeout();
+  document.removeEventListener('keydown', onKey, true);
+
+  STATE.totalSessions++;
+  localStorage.setItem('cm-sessions', String(STATE.totalSessions));
+
+  renderSummary();
+  switchScreen('summary');
+}
+
+function goHome() {
+  document.removeEventListener('keydown', onKey, true);
+  renderHome();
+  switchScreen('home');
+}
+
+/* ════════════════════════════════════════════════════════════
+   CUSTOM KEYMAP IMPORT
+   Validates structure and sanitizes before storing.
+════════════════════════════════════════════════════════════ */
+
+function importKeymap(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = evt => {
+    try {
+      const data = JSON.parse(evt.target.result);
+
+      if (!data.meta?.id || !Array.isArray(data.shortcuts)) {
+        alert('Invalid keymap: missing meta.id or shortcuts array.\nDownload the schema for the correct format.');
+        return;
+      }
+
+      const allValid = data.shortcuts.every(
+        s => s.id && s.type && Array.isArray(s.keys) && s.description && s.category
+      );
+      if (!allValid) {
+        alert('Some shortcuts are missing required fields: id, type, keys, description, category');
+        return;
+      }
+
+      const existIdx = STATE.customKeymaps.findIndex(k => k.meta.id === data.meta.id);
+      if (existIdx >= 0) {
+        STATE.customKeymaps[existIdx] = data;
+      } else {
+        STATE.customKeymaps.push(data);
+      }
+
+      saveCustomKeymaps();
+      if (!STATE.selectedPacks.includes(data.meta.id)) {
+        STATE.selectedPacks.push(data.meta.id);
+      }
+      renderHome();
+    } catch (err) {
+      alert('Failed to parse keymap JSON:\n' + err.message);
+    }
+  };
+
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+/* ════════════════════════════════════════════════════════════
+   SCHEMA DOWNLOAD
+════════════════════════════════════════════════════════════ */
+
+function downloadSchema() {
+  const schema = {
+    $schema:     'http://json-schema.org/draft-07/schema#',
+    title:       'ChordMaster Keymap',
+    description: 'Custom keymap format for the ChordMaster keyboard shortcut trainer.',
+    type:        'object',
+    required:    ['meta', 'shortcuts'],
+    properties: {
+      meta: {
+        type:     'object',
+        required: ['id', 'name', 'subtitle'],
+        properties: {
+          id:          { type: 'string',  description: 'Unique identifier, e.g. "my-app"' },
+          name:        { type: 'string',  description: 'Display name, e.g. "My App"' },
+          subtitle:    { type: 'string',  description: 'Short label, e.g. "text editor"' },
+          icon:        { type: 'string',  description: 'Single display character, e.g. "✦"' },
+          color:       { type: 'string',  description: 'CSS hex accent color, e.g. "#ff9500"' },
+          version:     { type: 'string' },
+          description: { type: 'string' },
+        }
+      },
+      shortcuts: {
+        type:  'array',
+        items: {
+          type:     'object',
+          required: ['id', 'type', 'keys', 'description', 'category'],
+          properties: {
+            id:          { type: 'string',  description: 'Unique namespaced ID, e.g. "myapp-save"' },
+            type:        { type: 'string',  enum: ['chord', 'sequence', 'key'],
+                           description: 'chord=held simultaneously | sequence=pressed in order | key=single key' },
+            keys:        { type: 'array', items: { type: 'string' },
+                           description: 'Key strings: "ctrl+a", "alt+f", "G", "$", "escape". Sequences list each step.' },
+            description: { type: 'string',  description: 'What this shortcut does' },
+            category:    { type: 'string',  description: 'Grouping, e.g. "Navigation"' },
+            difficulty:  { type: 'integer', minimum: 1, maximum: 3, description: '1=easy 2=medium 3=hard' },
+            tags:        { type: 'array', items: { type: 'string' } },
+          }
+        }
+      }
+    },
+    examples: [{
+      meta: { id: 'vscode', name: 'VS Code', subtitle: 'editor', icon: '⬡', color: '#007acc' },
+      shortcuts: [
+        { id: 'vsc-palette', type: 'chord', keys: ['ctrl+shift+p'], description: 'Open command palette', category: 'General',    difficulty: 1 },
+        { id: 'vsc-save',    type: 'chord', keys: ['ctrl+s'],       description: 'Save file',             category: 'File',       difficulty: 1 },
+        { id: 'vsc-find',    type: 'chord', keys: ['ctrl+f'],       description: 'Find in file',          category: 'Search',     difficulty: 1 },
+        { id: 'vsc-close',   type: 'chord', keys: ['ctrl+w'],       description: 'Close editor tab',      category: 'Tabs',       difficulty: 2 },
+      ]
+    }]
+  };
+
+  const blob = new Blob([JSON.stringify(schema, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'chordmaster-keymap.schema.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ════════════════════════════════════════════════════════════
+   EVENT WIRING
+   All event delegation here — no inline event handlers in
+   dynamically generated HTML.
+════════════════════════════════════════════════════════════ */
+
+// Home: pack card clicks via delegation
+document.getElementById('pack-grid').addEventListener('click', e => {
+  const card = e.target.closest('.pack-card');
+  if (card?.dataset.packId) togglePack(card.dataset.packId);
+});
+
+document.getElementById('btn-start').addEventListener('click', startSession);
+
+document.getElementById('btn-import').addEventListener('click', () => {
+  document.getElementById('file-input').click();
+});
+
+document.getElementById('file-input').addEventListener('change', importKeymap);
+
+document.getElementById('link-schema').addEventListener('click', e => {
+  e.preventDefault();
+  downloadSchema();
+});
+
+// Session controls
+document.getElementById('btn-hint').addEventListener('click', showHint);
+document.getElementById('btn-skip').addEventListener('click', skipShortcut);
+document.getElementById('btn-quit').addEventListener('click', endSession);
+
+document.getElementById('mode-learn').addEventListener('click', () => setMode('learn'));
+document.getElementById('mode-challenge').addEventListener('click', () => setMode('challenge'));
+
+// Summary
+document.getElementById('btn-go-home').addEventListener('click', goHome);
+document.getElementById('btn-new-sess').addEventListener('click', startSession);
+
+/* ════════════════════════════════════════════════════════════
+   INIT
+════════════════════════════════════════════════════════════ */
+
+renderHome();
+</script>
+</body>
+</html>

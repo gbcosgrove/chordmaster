@@ -1,0 +1,749 @@
+#!/usr/bin/env python3
+"""
+cm-discover — ChordMaster Keymap Discoverer
+
+Scans local config files and generates chordmaster-compatible JSON keymaps.
+
+Supported sources:
+  tmux    ~/.tmux.conf, ~/.config/tmux/tmux.conf
+  vscode  ~/Library/Application Support/Code/User/keybindings.json
+          ~/.config/Code/User/keybindings.json (Linux)
+
+Usage:
+  cm-discover                        # discover all, write to ./keymaps/
+  cm-discover --source tmux          # only tmux
+  cm-discover --source vscode        # only VS Code
+  cm-discover --out /path/to/dir     # custom output directory
+  cm-discover --list                 # show what would be discovered, no output
+  cm-discover --dry-run              # parse and preview, no files written
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+from pathlib import Path
+from typing import Optional
+
+VERSION = "1.0.0"
+
+# ── CONFIG FILE LOCATIONS ────────────────────────────────────────────────────
+
+SEARCH_PATHS: dict[str, list[str]] = {
+    "tmux": [
+        "~/.tmux.conf",
+        "~/.config/tmux/tmux.conf",
+        "~/.config/tmux/tmux.conf",
+    ],
+    "vscode": [
+        "~/Library/Application Support/Code/User/keybindings.json",
+        "~/.config/Code/User/keybindings.json",
+        "~/.config/VSCodium/User/keybindings.json",
+    ],
+}
+
+# ── TMUX — KEY NAME NORMALISATION ───────────────────────────────────────────
+
+# tmux special key names → chordmaster format
+TMUX_SPECIAL_KEYS: dict[str, str] = {
+    "space": "space",   "Space": "space",
+    "enter": "enter",   "Enter": "enter",
+    "escape": "escape", "Escape": "escape",
+    "tab": "tab",       "Tab": "tab",
+    "bspace": "backspace", "BSpace": "backspace",
+    "dc": "delete",     "DC": "delete",
+    "ic": "insert",     "IC": "insert",
+    "up": "up",         "Up": "up",
+    "down": "down",     "Down": "down",
+    "left": "left",     "Left": "left",
+    "right": "right",   "Right": "right",
+    "npage": "pagedown", "NPage": "pagedown",
+    "ppage": "pageup",   "PPage": "pageup",
+    "home": "home",     "Home": "home",
+    "end": "end",       "End": "end",
+    "btab": "shift+tab", "BTab": "shift+tab",
+}
+
+
+def tmux_key_to_chordmaster(tmux_key: str) -> Optional[str]:
+    """
+    Convert a tmux key binding string to chordmaster format.
+
+    tmux format:       chordmaster format:
+      C-a              ctrl+a
+      M-f              alt+f
+      C-M-x            ctrl+alt+x
+      %                %
+      Enter            enter
+      F5               F5
+    """
+    key = tmux_key.strip()
+
+    # Strip outer quotes if present
+    key = key.strip("'\"")
+
+    mods = []
+
+    # Handle C- (Ctrl) prefix — may chain with M-
+    while key.startswith("C-"):
+        mods.append("ctrl")
+        key = key[2:]
+
+    # Handle M- (Meta/Alt) prefix
+    while key.startswith("M-"):
+        mods.append("alt")
+        key = key[2:]
+
+    # Handle S- (Shift) prefix — rare but valid
+    while key.startswith("S-"):
+        mods.append("shift")
+        key = key[2:]
+
+    # Nothing left
+    if not key:
+        return None
+
+    # Special key names
+    normalised = TMUX_SPECIAL_KEYS.get(key)
+    if normalised:
+        parts = mods + [normalised]
+        return "+".join(parts)
+
+    # Single printable character
+    if len(key) == 1:
+        parts = mods + [key]
+        return "+".join(parts)
+
+    # Function keys F1–F12
+    if re.match(r"^F\d{1,2}$", key, re.IGNORECASE):
+        parts = mods + [key.upper()]
+        return "+".join(parts)
+
+    # Unknown — pass through
+    parts = mods + [key.lower()]
+    return "+".join(parts)
+
+
+# ── TMUX — DESCRIPTION LOOKUP ────────────────────────────────────────────────
+
+# (command_name, optional_flag) → (description, difficulty)
+TMUX_DESCRIPTIONS: dict[tuple[str, Optional[str]], tuple[str, int]] = {
+    # split-window with direction flags
+    ("split-window", "-h"): ("Split pane horizontally (side by side)", 1),
+    ("split-window", "-v"): ("Split pane vertically (top/bottom)", 1),
+    # select-pane with direction flags
+    ("select-pane", "-L"): ("Select pane to the left", 1),
+    ("select-pane", "-R"): ("Select pane to the right", 1),
+    ("select-pane", "-U"): ("Select pane above", 1),
+    ("select-pane", "-D"): ("Select pane below", 1),
+    # resize-pane with direction flags
+    ("resize-pane", "-L"): ("Resize pane leftward", 2),
+    ("resize-pane", "-R"): ("Resize pane rightward", 2),
+    ("resize-pane", "-U"): ("Resize pane upward", 2),
+    ("resize-pane", "-D"): ("Resize pane downward", 2),
+    ("resize-pane", "-Z"): ("Toggle pane zoom (maximize)", 2),
+    # Generic commands — no specific flag needed
+    ("new-window",        None): ("Create new window", 1),
+    ("previous-window",   None): ("Go to previous window", 1),
+    ("next-window",       None): ("Go to next window", 1),
+    ("last-window",       None): ("Switch to last window", 2),
+    ("kill-window",       None): ("Kill current window", 2),
+    ("rename-window",     None): ("Rename current window", 2),
+    ("choose-window",     None): ("List windows interactively", 1),
+    ("split-window",      None): ("Split pane", 1),
+    ("kill-pane",         None): ("Kill current pane", 2),
+    ("last-pane",         None): ("Switch to last pane", 2),
+    ("rotate-window",     None): ("Rotate panes in window", 3),
+    ("swap-pane",         None): ("Swap pane positions", 3),
+    ("break-pane",        None): ("Break pane into new window", 3),
+    ("join-pane",         None): ("Join pane from another window", 3),
+    ("display-panes",     None): ("Show pane numbers briefly", 2),
+    ("detach-client",     None): ("Detach from current session", 1),
+    ("choose-session",    None): ("List sessions interactively", 2),
+    ("new-session",       None): ("Create new session", 2),
+    ("switch-client",     None): ("Switch to another session", 2),
+    ("rename-session",    None): ("Rename current session", 2),
+    ("kill-session",      None): ("Kill current session", 3),
+    ("copy-mode",         None): ("Enter copy / scroll mode", 2),
+    ("paste-buffer",      None): ("Paste from tmux buffer", 2),
+    ("choose-buffer",     None): ("Choose a paste buffer", 3),
+    ("list-keys",         None): ("Show all key bindings", 1),
+    ("command-prompt",    None): ("Open tmux command prompt", 2),
+    ("clock-mode",        None): ("Show clock", 1),
+    ("refresh-client",    None): ("Refresh client display", 2),
+    ("suspend-client",    None): ("Suspend tmux client", 3),
+    ("send-prefix",       None): ("Send prefix key to pane", 3),
+    ("display-message",   None): ("Display a message", 3),
+    ("source-file",       None): ("Reload config file", 2),
+    ("find-window",       None): ("Find window by text", 2),
+    ("swap-window",       None): ("Swap window positions", 3),
+    ("move-window",       None): ("Move window to index", 3),
+    ("select-layout",     None): ("Apply a pane layout", 2),
+    ("next-layout",       None): ("Switch to next pane layout", 2),
+    ("clear-history",     None): ("Clear pane scrollback history", 3),
+    ("run-shell",         None): ("Run a shell command", 3),
+}
+
+
+def tmux_command_to_description(command_str: str) -> tuple[str, int]:
+    """
+    Parse a tmux command string and return (description, difficulty).
+
+    Tries flag-specific lookup first, then generic command lookup,
+    then falls back to a human-readable version of the raw string.
+    """
+    parts = command_str.strip().split()
+    if not parts:
+        return (command_str, 2)
+
+    cmd = parts[0]
+    flags = [p for p in parts[1:] if p.startswith("-")]
+
+    # Flag-specific lookup (e.g. split-window -h vs split-window -v)
+    for flag in flags:
+        key = (cmd, flag)
+        if key in TMUX_DESCRIPTIONS:
+            return TMUX_DESCRIPTIONS[key]
+
+    # Generic command lookup
+    if (cmd, None) in TMUX_DESCRIPTIONS:
+        return TMUX_DESCRIPTIONS[(cmd, None)]
+
+    # Fallback: convert command name to readable string
+    readable = cmd.replace("-", " ").title()
+    return (readable, 2)
+
+
+# ── TMUX — PARSER ────────────────────────────────────────────────────────────
+
+# Matches:  bind [-n] [-T table] KEY COMMAND [ARGS...]
+# Also:     bind-key [-n] [-T table] KEY COMMAND [ARGS...]
+# -T takes a mandatory table argument — capture it as a pair so the
+# table name is never mistaken for the key token.
+_BIND_RE = re.compile(
+    r"^\s*bind(?:-key)?"
+    r"(?P<flags>(?:\s+(?:-T\s+\S+|-[^\s]+))*)"  # -T tablename captured as unit
+    r"\s+(?P<key>\S+)"
+    r"(?:\s+(?P<command>.+))?",
+    re.MULTILINE
+)
+
+# Detect prefix override: set [-g] [-s] prefix C-a
+_PREFIX_RE = re.compile(
+    r"^\s*set(?:-option)?\s+(?:-[gs]\s+)*prefix\s+(?P<key>\S+)",
+    re.MULTILINE
+)
+
+
+def parse_tmux(config_path: Path) -> dict:
+    """
+    Parse a tmux.conf file and return a chordmaster keymap dict.
+
+    Handles:
+    - Default prefix (ctrl+b) and custom prefix detection
+    - bind KEY COMMAND  (prefix + key)
+    - bind -n KEY COMMAND  (no prefix, direct chord)
+    - bind -T TABLE KEY COMMAND  (table bindings — skip non-root tables)
+    """
+    text = config_path.read_text(encoding="utf-8", errors="replace")
+
+    # Strip comments
+    text = re.sub(r"#[^\n]*", "", text)
+
+    # Join continuation lines
+    text = re.sub(r"\\\n", " ", text)
+
+    # Detect custom prefix (default: ctrl+b)
+    prefix = "ctrl+b"
+    prefix_match = _PREFIX_RE.search(text)
+    if prefix_match:
+        converted = tmux_key_to_chordmaster(prefix_match.group("key"))
+        if converted:
+            prefix = converted
+
+    shortcuts = []
+    seen_keys: set[str] = set()
+
+    for match in _BIND_RE.finditer(text):
+        flags_str = match.group("flags") or ""
+        raw_key   = match.group("key") or ""
+        command   = (match.group("command") or "").strip()
+
+        if not raw_key or not command:
+            continue
+
+        # Parse flags — find -n and -T tablename
+        flags = flags_str.split()
+        no_prefix = "-n" in flags
+
+        # Extract table name from "-T tablename" pair (captured as unit in regex)
+        table_name = ""
+        for i, f in enumerate(flags):
+            if f == "-T" and i + 1 < len(flags):
+                table_name = flags[i + 1]
+                break
+
+        # Only handle root table (default) and -n bindings
+        if table_name and table_name.lower() not in ("root", ""):
+            continue  # skip copy-mode, prefix table, etc.
+
+        chord = tmux_key_to_chordmaster(raw_key)
+        if not chord:
+            continue
+
+        if no_prefix:
+            sc_type = "chord"
+            keys = [chord]
+        else:
+            sc_type = "sequence"
+            keys = [prefix, chord]
+
+        description, difficulty = tmux_command_to_description(command)
+
+        # Deduplicate by key combo
+        key_sig = "+".join(keys)
+        if key_sig in seen_keys:
+            continue
+        seen_keys.add(key_sig)
+
+        # Derive category from command
+        cmd_name = command.split()[0] if command else ""
+        category = _tmux_category(cmd_name)
+
+        shortcut_id = f"tmux-custom-{re.sub(r'[^a-z0-9]', '-', chord.lower())}"
+
+        shortcuts.append({
+            "id":          shortcut_id,
+            "type":        sc_type,
+            "keys":        keys,
+            "description": description,
+            "category":    category,
+            "difficulty":  difficulty,
+            "tags":        ["custom"],
+        })
+
+    return {
+        "meta": {
+            "id":          "tmux-custom",
+            "name":        "tmux (custom)",
+            "subtitle":    f"from {config_path.name}",
+            "icon":        "⊞",
+            "color":       "#00d4ff",
+            "version":     "1.0.0",
+            "description": f"Custom tmux bindings parsed from {config_path}",
+            "source":      str(config_path),
+        },
+        "shortcuts": shortcuts,
+    }
+
+
+def _tmux_category(cmd: str) -> str:
+    CATEGORIES = {
+        "new-window": "Windows", "kill-window": "Windows", "rename-window": "Windows",
+        "previous-window": "Windows", "next-window": "Windows", "last-window": "Windows",
+        "choose-window": "Windows", "find-window": "Windows", "move-window": "Windows",
+        "swap-window": "Windows", "link-window": "Windows",
+        "split-window": "Panes", "kill-pane": "Panes", "select-pane": "Panes",
+        "resize-pane": "Panes", "rotate-window": "Panes", "swap-pane": "Panes",
+        "last-pane": "Panes", "break-pane": "Panes", "join-pane": "Panes",
+        "display-panes": "Panes", "select-layout": "Panes", "next-layout": "Panes",
+        "detach-client": "Sessions", "choose-session": "Sessions",
+        "new-session": "Sessions", "switch-client": "Sessions", "rename-session": "Sessions",
+        "kill-session": "Sessions",
+        "copy-mode": "Copy", "paste-buffer": "Copy", "choose-buffer": "Copy",
+        "list-keys": "Misc", "command-prompt": "Misc", "clock-mode": "Misc",
+        "refresh-client": "Misc", "source-file": "Misc", "run-shell": "Misc",
+    }
+    return CATEGORIES.get(cmd, "Custom")
+
+
+# ── VSCODE — KEY NORMALISATION ───────────────────────────────────────────────
+
+def vscode_key_to_chordmaster(vscode_key: str) -> Optional[str]:
+    """
+    Convert a VS Code key string to chordmaster format.
+
+    VS Code:        chordmaster:
+      ctrl+shift+p  ctrl+shift+p   (no change needed for most)
+      cmd+s         meta+s
+      alt+f4        alt+f4
+      ctrl+k ctrl+s ctrl+k         (chord sequence — take first chord only for now)
+    """
+    if not vscode_key:
+        return None
+
+    # VS Code chord sequences (space-separated chords: "ctrl+k ctrl+s")
+    # Only take the first chord for now — multi-chord is rare
+    key = vscode_key.split(" ")[0].lower().strip()
+
+    # Normalise modifier names
+    key = key.replace("cmd+", "meta+")
+    key = key.replace("win+", "meta+")
+
+    # Filter out empty strings
+    if not key:
+        return None
+
+    return key
+
+
+# ── VSCODE — DESCRIPTION LOOKUP ──────────────────────────────────────────────
+
+# command_id → (description, difficulty)
+VSCODE_DESCRIPTIONS: dict[str, tuple[str, int]] = {
+    "workbench.action.showCommands":                ("Open command palette",                  1),
+    "workbench.action.quickOpen":                   ("Quick open file by name",               1),
+    "workbench.action.openSettings":                ("Open settings",                         1),
+    "workbench.action.openSettingsJson":            ("Open settings JSON",                    2),
+    "workbench.action.openKeyboardShortcuts":       ("Open keyboard shortcuts",               2),
+    "workbench.action.openRecent":                  ("Open recent file or folder",            2),
+    "workbench.action.newWindow":                   ("Open new window",                       2),
+    "workbench.action.closeWindow":                 ("Close window",                          2),
+    "workbench.action.files.newUntitledFile":       ("New untitled file",                     1),
+    "workbench.action.files.save":                  ("Save file",                             1),
+    "workbench.action.files.saveAll":               ("Save all files",                        2),
+    "workbench.action.files.saveAs":                ("Save file as",                          2),
+    "workbench.action.splitEditor":                 ("Split editor",                          2),
+    "workbench.action.closeEditor":                 ("Close current editor",                  1),
+    "workbench.action.closeAllEditors":             ("Close all editors",                     2),
+    "workbench.action.nextEditor":                  ("Go to next editor tab",                 1),
+    "workbench.action.previousEditor":              ("Go to previous editor tab",             1),
+    "workbench.action.navigateBack":                ("Navigate back",                         1),
+    "workbench.action.navigateForward":             ("Navigate forward",                      1),
+    "workbench.action.toggleSidebarVisibility":     ("Toggle sidebar",                        2),
+    "workbench.action.togglePanel":                 ("Toggle panel",                          2),
+    "workbench.action.toggleZenMode":               ("Toggle Zen mode",                       2),
+    "workbench.action.toggleFullScreen":            ("Toggle full screen",                    2),
+    "workbench.action.terminal.new":                ("Open new terminal",                     1),
+    "workbench.action.terminal.toggleTerminal":     ("Toggle terminal panel",                 1),
+    "workbench.action.terminal.kill":               ("Kill terminal",                         2),
+    "workbench.action.gotoSymbol":                  ("Go to symbol in file",                  2),
+    "workbench.action.showAllSymbols":              ("Go to symbol in workspace",             2),
+    "workbench.action.gotoLine":                    ("Go to line number",                     1),
+    "workbench.action.problems.focus":              ("Focus problems panel",                  2),
+    "workbench.view.explorer":                      ("Show file explorer",                    1),
+    "workbench.view.search":                        ("Show search panel",                     1),
+    "workbench.view.scm":                           ("Show source control",                   1),
+    "workbench.view.debug":                         ("Show debug panel",                      2),
+    "workbench.view.extensions":                    ("Show extensions panel",                 2),
+    "workbench.action.findInFiles":                 ("Search across all files",               1),
+    "workbench.action.replaceInFiles":              ("Replace across all files",              2),
+    "editor.action.formatDocument":                 ("Format document",                       2),
+    "editor.action.formatSelection":                ("Format selection",                      2),
+    "editor.action.organizeImports":                ("Organize imports",                      2),
+    "editor.action.rename":                         ("Rename symbol",                         2),
+    "editor.action.goToDeclaration":                ("Go to declaration",                     2),
+    "editor.action.revealDefinition":               ("Go to definition",                      2),
+    "editor.action.peekDefinition":                 ("Peek definition",                       2),
+    "editor.action.goToTypeDefinition":             ("Go to type definition",                 2),
+    "editor.action.goToImplementation":             ("Go to implementation",                  2),
+    "editor.action.referenceSearch.find":           ("Find all references",                   2),
+    "editor.action.commentLine":                    ("Toggle line comment",                   1),
+    "editor.action.blockComment":                   ("Toggle block comment",                  2),
+    "editor.action.addSelectionToNextFindMatch":    ("Select next occurrence",                2),
+    "editor.action.selectHighlights":               ("Select all occurrences",                2),
+    "editor.action.moveLineDown":                   ("Move line down",                        2),
+    "editor.action.moveLineUp":                     ("Move line up",                          2),
+    "editor.action.copyLinesDownAction":            ("Duplicate line downward",               2),
+    "editor.action.copyLinesUpAction":              ("Duplicate line upward",                 2),
+    "editor.action.deleteLines":                    ("Delete line",                           2),
+    "editor.action.joinLines":                      ("Join lines",                            3),
+    "editor.action.insertLineAfter":                ("Insert line after",                     1),
+    "editor.action.insertLineBefore":               ("Insert line before",                    2),
+    "editor.action.indentLines":                    ("Indent lines",                          1),
+    "editor.action.outdentLines":                   ("Outdent lines",                         1),
+    "editor.action.quickFix":                       ("Quick fix / code action",               2),
+    "editor.action.triggerSuggest":                 ("Trigger IntelliSense",                  1),
+    "editor.action.triggerParameterHints":          ("Show parameter hints",                  2),
+    "editor.action.showHover":                      ("Show hover tooltip",                    2),
+    "editor.action.startFindReplaceAction":         ("Find and replace in file",              1),
+    "editor.fold":                                  ("Fold current region",                   2),
+    "editor.unfold":                                ("Unfold current region",                 2),
+    "editor.foldAll":                               ("Fold all regions",                      3),
+    "editor.unfoldAll":                             ("Unfold all regions",                    3),
+    "undo":                                         ("Undo",                                  1),
+    "redo":                                         ("Redo",                                  1),
+    "copy":                                         ("Copy",                                  1),
+    "cut":                                          ("Cut",                                   1),
+    "paste":                                        ("Paste",                                 1),
+}
+
+
+def vscode_command_to_description(command_id: str) -> tuple[str, int]:
+    """
+    Return (description, difficulty) for a VS Code command ID.
+    Falls back to parsing the command name into readable text.
+    """
+    if command_id in VSCODE_DESCRIPTIONS:
+        return VSCODE_DESCRIPTIONS[command_id]
+
+    # Fallback: parse command name
+    # e.g. "workbench.action.showCommands" → "Show Commands"
+    # e.g. "editor.action.formatDocument" → "Format Document"
+    parts = command_id.split(".")
+    # Find the most meaningful part (skip generic namespaces)
+    SKIP = {"workbench", "editor", "action", "view", "files", "terminal", "git"}
+    for part in reversed(parts):
+        if part.lower() not in SKIP and part:
+            # Split camelCase and title-case
+            words = re.sub(r"([A-Z])", r" \1", part).strip()
+            return (words.title(), 2)
+
+    return (command_id.split(".")[-1].title(), 2)
+
+
+def _vscode_category(command_id: str) -> str:
+    """Derive a category from a VS Code command ID."""
+    if "terminal" in command_id:            return "Terminal"
+    if "file" in command_id.lower():        return "File"
+    if "editor" in command_id:
+        if "action.go" in command_id:       return "Navigation"
+        if "fold" in command_id:            return "Folding"
+        if "comment" in command_id:         return "Editing"
+        if "format" in command_id:          return "Editing"
+        if "selection" in command_id:       return "Selection"
+        if "find" in command_id or "replace" in command_id: return "Search"
+        return "Editing"
+    if "view" in command_id:                return "View"
+    if "find" in command_id or "search" in command_id: return "Search"
+    if "navigate" in command_id or "goto" in command_id: return "Navigation"
+    if "debug" in command_id:               return "Debug"
+    if "scm" in command_id or "git" in command_id: return "Git"
+    if "extension" in command_id:           return "Extensions"
+    if "problem" in command_id:             return "Problems"
+    return "General"
+
+
+# ── VSCODE — PARSER ──────────────────────────────────────────────────────────
+
+def parse_vscode(config_path: Path) -> dict:
+    """
+    Parse a VS Code keybindings.json and return a chordmaster keymap dict.
+
+    VS Code's keybindings.json is a JSON array of:
+      { "key": "ctrl+shift+p", "command": "workbench.action.showCommands" }
+
+    Entries with commands starting with "-" are removals — skip those.
+    """
+    try:
+        raw = config_path.read_text(encoding="utf-8", errors="replace")
+
+        # VS Code keybindings.json allows // comments — strip them
+        raw = re.sub(r"//[^\n]*", "", raw)
+        raw = re.sub(r"/\*.*?\*/", "", raw, flags=re.DOTALL)
+
+        entries = json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f"  ✗ Failed to parse {config_path}: {e}", file=sys.stderr)
+        return {}
+
+    if not isinstance(entries, list):
+        return {}
+
+    shortcuts = []
+    seen_keys: set[str] = set()
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+
+        command = entry.get("command", "")
+        vsc_key  = entry.get("key", "")
+
+        # Skip removal entries (command starts with -)
+        if not command or command.startswith("-"):
+            continue
+
+        if not vsc_key:
+            continue
+
+        chord = vscode_key_to_chordmaster(vsc_key)
+        if not chord:
+            continue
+
+        # Determine if it's a multi-chord sequence
+        chords = [vscode_key_to_chordmaster(k) for k in vsc_key.split(" ") if k.strip()]
+        chords = [c for c in chords if c]
+
+        if len(chords) == 0:
+            continue
+
+        sc_type = "sequence" if len(chords) > 1 else "chord"
+        keys = chords
+
+        # Deduplicate
+        key_sig = " ".join(keys)
+        if key_sig in seen_keys:
+            continue
+        seen_keys.add(key_sig)
+
+        description, difficulty = vscode_command_to_description(command)
+        category = _vscode_category(command)
+
+        # Safe ID from key combo
+        safe_id = re.sub(r"[^a-z0-9]+", "-", chord.lower()).strip("-")
+        shortcut_id = f"vsc-custom-{safe_id}"
+
+        shortcuts.append({
+            "id":          shortcut_id,
+            "type":        sc_type,
+            "keys":        keys,
+            "description": description,
+            "category":    category,
+            "difficulty":  difficulty,
+            "tags":        ["custom"],
+        })
+
+    return {
+        "meta": {
+            "id":          "vscode-custom",
+            "name":        "VS Code (custom)",
+            "subtitle":    "your keybindings",
+            "icon":        "⬡",
+            "color":       "#007acc",
+            "version":     "1.0.0",
+            "description": f"Custom VS Code keybindings parsed from {config_path}",
+            "source":      str(config_path),
+        },
+        "shortcuts": shortcuts,
+    }
+
+
+# ── DISCOVERY + OUTPUT ───────────────────────────────────────────────────────
+
+def find_config_file(source: str) -> Optional[Path]:
+    """Return the first existing config file path for the given source."""
+    for pattern in SEARCH_PATHS.get(source, []):
+        path = Path(pattern).expanduser()
+        if path.exists():
+            return path
+    return None
+
+
+def discover_all() -> dict[str, Optional[Path]]:
+    """Return a dict of source → config_path for all known sources."""
+    return {source: find_config_file(source) for source in SEARCH_PATHS}
+
+
+PARSERS = {
+    "tmux":   parse_tmux,
+    "vscode": parse_vscode,
+}
+
+
+def write_keymap(keymap: dict, out_dir: Path, dry_run: bool = False) -> Path:
+    """Write a keymap dict as JSON to out_dir/{id}.json."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{keymap['meta']['id']}.json"
+    out_path = out_dir / filename
+
+    if not dry_run:
+        out_path.write_text(json.dumps(keymap, indent=2, ensure_ascii=False))
+
+    return out_path
+
+
+# ── CLI ──────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="cm-discover",
+        description="Generate ChordMaster keymaps from local config files.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    parser.add_argument(
+        "--source", "-s",
+        choices=list(SEARCH_PATHS.keys()),
+        help="Only process this source (default: all)",
+    )
+    parser.add_argument(
+        "--out", "-o",
+        type=Path,
+        default=Path("./keymaps"),
+        metavar="DIR",
+        help="Output directory for generated JSON files (default: ./keymaps)",
+    )
+    parser.add_argument(
+        "--list", "-l",
+        action="store_true",
+        help="List discovered config files without generating keymaps",
+    )
+    parser.add_argument(
+        "--dry-run", "-n",
+        action="store_true",
+        dest="dry_run",
+        help="Parse and preview shortcut counts without writing files",
+    )
+    parser.add_argument(
+        "--version", "-v",
+        action="version",
+        version=f"cm-discover {VERSION}",
+    )
+
+    args = parser.parse_args()
+
+    sources_to_run = [args.source] if args.source else list(SEARCH_PATHS.keys())
+    found = {s: find_config_file(s) for s in sources_to_run}
+
+    # ── LIST mode ─────────────────────────────────────────────────────────────
+    if args.list:
+        print(f"\n  cm-discover {VERSION} — config file scan\n")
+        for source, path in found.items():
+            status = f"✓  {path}" if path else "✗  not found"
+            searched = ", ".join(SEARCH_PATHS[source])
+            print(f"  {source:<10} {status}")
+            if not path:
+                print(f"            searched: {searched}")
+        print()
+        return
+
+    # ── PARSE + OUTPUT ────────────────────────────────────────────────────────
+    any_found = False
+    generated: list[tuple[str, Path]] = []
+
+    for source, config_path in found.items():
+        if not config_path:
+            print(f"  {source:<10} ✗  no config file found")
+            searched = ", ".join(SEARCH_PATHS[source])
+            print(f"             searched: {searched}")
+            continue
+
+        any_found = True
+        print(f"  {source:<10} ✓  {config_path}")
+
+        try:
+            keymap = PARSERS[source](config_path)
+        except Exception as e:
+            print(f"             ✗  parse error: {e}", file=sys.stderr)
+            continue
+
+        if not keymap or not keymap.get("shortcuts"):
+            print(f"             ✗  no bindings found in {config_path.name}")
+            continue
+
+        count = len(keymap["shortcuts"])
+        out_path = write_keymap(keymap, args.out, dry_run=args.dry_run)
+        generated.append((source, out_path))
+
+        prefix = "  (dry run)" if args.dry_run else "  →"
+        print(f"             {prefix} {out_path}  ({count} shortcuts)")
+
+    print()
+
+    if not any_found:
+        print("  No config files found. Nothing generated.\n")
+        print("  Once you have tmux or VS Code configured, run cm-discover again.")
+        print("  Run with --list to see which paths are searched.\n")
+        return
+
+    if generated and not args.dry_run:
+        print(f"  Generated {len(generated)} keymap(s) in {args.out}/")
+        print("  Import them in ChordMaster via the ↑ IMPORT KEYMAP button.\n")
+    elif args.dry_run:
+        print("  Dry run — no files written.\n")
+
+
+if __name__ == "__main__":
+    main()

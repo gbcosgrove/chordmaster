@@ -1,0 +1,173 @@
+{
+  "meta": {
+    "id": "claude-code",
+    "name": "Claude Code",
+    "subtitle": "AI coding agent shortcuts",
+    "icon": "◆",
+    "color": "#d97706",
+    "version": "1.0.0",
+    "description": "Keyboard shortcuts for Claude Code's interactive REPL — generation control, edit acceptance, input navigation, and history. Shift+Tab (auto-accept edits) is the one most worth drilling."
+  },
+  "shortcuts": [
+    {
+      "id": "cc-interrupt",
+      "type": "chord",
+      "keys": ["ctrl+c"],
+      "description": "Interrupt AI response mid-generation",
+      "category": "Generation Control",
+      "difficulty": 1
+    },
+    {
+      "id": "cc-escape",
+      "type": "key",
+      "keys": ["escape"],
+      "description": "Cancel current input without submitting",
+      "category": "Generation Control",
+      "difficulty": 1
+    },
+    {
+      "id": "cc-accept-edits",
+      "type": "chord",
+      "keys": ["shift+tab"],
+      "description": "Auto-accept all pending file edits",
+      "category": "Edit Acceptance",
+      "difficulty": 2
+    },
+    {
+      "id": "cc-history-prev",
+      "type": "key",
+      "keys": ["up"],
+      "description": "Previous input in history",
+      "category": "History",
+      "difficulty": 1
+    },
+    {
+      "id": "cc-history-next",
+      "type": "key",
+      "keys": ["down"],
+      "description": "Next input in history",
+      "category": "History",
+      "difficulty": 1
+    },
+    {
+      "id": "cc-history-search",
+      "type": "chord",
+      "keys": ["ctrl+r"],
+      "description": "Reverse-search through input history",
+      "category": "History",
+      "difficulty": 2
+    },
+    {
+      "id": "cc-line-start",
+      "type": "chord",
+      "keys": ["ctrl+a"],
+      "description": "Jump to beginning of input line",
+      "category": "Input Navigation",
+      "difficulty": 1
+    },
+    {
+      "id": "cc-line-end",
+      "type": "chord",
+      "keys": ["ctrl+e"],
+      "description": "Jump to end of input line",
+      "category": "Input Navigation",
+      "difficulty": 1
+    },
+    {
+      "id": "cc-word-forward",
+      "type": "chord",
+      "keys": ["alt+f"],
+      "description": "Move forward one word",
+      "category": "Input Navigation",
+      "difficulty": 2
+    },
+    {
+      "id": "cc-word-back",
+      "type": "chord",
+      "keys": ["alt+b"],
+      "description": "Move backward one word",
+      "category": "Input Navigation",
+      "difficulty": 2
+    },
+    {
+      "id": "cc-kill-eol",
+      "type": "chord",
+      "keys": ["ctrl+k"],
+      "description": "Delete from cursor to end of line",
+      "category": "Input Editing",
+      "difficulty": 2
+    },
+    {
+      "id": "cc-kill-word",
+      "type": "chord",
+      "keys": ["ctrl+w"],
+      "description": "Delete word before cursor",
+      "category": "Input Editing",
+      "difficulty": 2
+    },
+    {
+      "id": "cc-clear-line",
+      "type": "chord",
+      "keys": ["ctrl+u"],
+      "description": "Clear entire input line",
+      "category": "Input Editing",
+      "difficulty": 2
+    },
+    {
+      "id": "cc-yank",
+      "type": "chord",
+      "keys": ["ctrl+y"],
+      "description": "Paste (yank) last killed text",
+      "category": "Input Editing",
+      "difficulty": 3
+    },
+    {
+      "id": "cc-transpose",
+      "type": "chord",
+      "keys": ["ctrl+t"],
+      "description": "Transpose characters at cursor",
+      "category": "Input Editing",
+      "difficulty": 3
+    },
+    {
+      "id": "cc-clear-screen",
+      "type": "chord",
+      "keys": ["ctrl+l"],
+      "description": "Clear terminal screen (keep session)",
+      "category": "Screen",
+      "difficulty": 1
+    },
+    {
+      "id": "cc-suspend",
+      "type": "chord",
+      "keys": ["ctrl+z"],
+      "description": "Suspend Claude Code to shell (fg to return)",
+      "category": "Screen",
+      "difficulty": 2
+    },
+    {
+      "id": "cc-word-del-forward",
+      "type": "chord",
+      "keys": ["alt+d"],
+      "description": "Delete word forward from cursor",
+      "category": "Input Editing",
+      "difficulty": 3
+    },
+    {
+      "id": "cc-word-uppercase",
+      "type": "chord",
+      "keys": ["alt+u"],
+      "description": "Uppercase word from cursor",
+      "category": "Input Editing",
+      "difficulty": 3
+    },
+    {
+      "id": "cc-word-lowercase",
+      "type": "chord",
+      "keys": ["alt+l"],
+      "description": "Lowercase word from cursor",
+      "category": "Input Editing",
+      "difficulty": 3
+    }
+  ]
+}
